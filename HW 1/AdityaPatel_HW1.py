@@ -63,7 +63,7 @@ def doppler(t, N):
 
     return f
 
-# Define RMSE function
+# Define loss function
 def loss_fxn(f, f_hat, N):
     return (1 / np.sqrt(N)) * np.linalg.norm(f_hat - f, ord=2)
 
@@ -140,7 +140,7 @@ arl_knn_dopp = np.mean(knn_loss_dopp)
 armse_poly_dopp = np.mean(poly_dopp_rmse)
 armse_knn_dopp = np.mean(knn_dopp_rmse)
 
-print("Average Root Loss Over 20 Replications:")
+print("Average RMSE of Root Loss for 20 Replications:")
 print("Bumps Function:")
 print("\tPolynomial Regression:\t{:.4f}".format(arl_poly_bumps))
 print("\tK-Nearest-Neighbors Regression:\t{:.4f}".format(arl_knn_bumps))
@@ -156,13 +156,7 @@ print("Doppler Function:")
 print("\tPolynomial Regression:\t{:.4f}".format(armse_poly_dopp))
 print("\tK-Nearest-Neighbors Regression:\t{:.4f}".format(armse_knn_dopp))
 
-print("\nAverage RMSE Over Average Root Loss for 20 Replications:")
-print("Bumps Function:")
-print("\tPolynomial Regression:\t{:.4f}".format(armse_poly_bumps/arl_poly_bumps))
-print("\tK-Nearest-Neighbors Regression:\t{:.4f}".format(armse_knn_bumps/arl_knn_bumps))
-print("Doppler Function:")
-print("\tPolynomial Regression:\t{:.4f}".format(armse_poly_dopp/arl_poly_dopp))
-print("\tK-Nearest-Neighbors Regression:\t{:.4f}".format(armse_knn_dopp/arl_knn_dopp))
+
 
 # Plotting
 plt.figure()
