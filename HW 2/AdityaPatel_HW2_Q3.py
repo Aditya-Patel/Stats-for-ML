@@ -13,7 +13,7 @@ import random
 from sklearn.model_selection import GridSearchCV
 from sklearn.ensemble import RandomForestClassifier, BaggingClassifier, GradientBoostingClassifier
 from sklearn.tree import DecisionTreeClassifier
-from sklearn.metrics import classification_report
+from sklearn.metrics import accuracy_score
 
 test_data = '/archive/mnist_test.csv'
 train_data = '/archive/mnist_train.csv'
@@ -66,26 +66,32 @@ def GetBestParams(model, params, trainset_X, trainset_y):
     grid_search = GridSearchCV(
         estimator=model, param_grid=params, scoring='accuracy', n_jobs=-1, cv=2, verbose=2)
     grid_search.fit(trainset_X, trainset_y)
-    print("Found best params for {}".format(model))
+    print("Found best params for {}:\n{}".format(model, grid_search.best_params_))
     return grid_search.best_params_
 
 
 if __name__ == '__main__':
-    single_tree = DecisionTreeClassifier()
-    random_forest = RandomForestClassifier()
-    bagging = BaggingClassifier()
-    boosting = GradientBoostingClassifier()
-    print("Developed models")
-
-    models = [single_tree, random_forest, bagging, boosting]
-    params = [st_params, rf_params, bg_params, bst_params]
-
     train_data_path = os.getcwd() + train_data
     test_data_path = os.getcwd() + train_data
 
     X_train, y_train = CreateDataset(train_data_path)
     X_test, y_test = CreateDataset(test_data_path)
     print("Created test and train datasets")
+    
+    single_tree = DecisionTreeClassifier()
+    random_forest = RandomForestClassifier()
+    bagging = BaggingClassifier()
+    boosting = GradientBoostingClassifier()
+    print("Developed models")
+
+    single_tree.fit(X_train, y_train)
+    random_forest.fit(X_train, y_train)
+    bagging.fit(X_train, y_train)
+    boosting.fit(X_train, y_train)
+    print("Fit models to training data")
+
+    models = [single_tree, random_forest, bagging, boosting]
+    params = [st_params, rf_params, bg_params, bst_params]
 
     print("Getting best parameters")
     best_params = []
@@ -102,6 +108,22 @@ if __name__ == '__main__':
     bagging = BaggingClassifier(**best_params[2])
     boosting = GradientBoostingClassifier(**best_params[3])
 
-    print("Predicting on test set")
+    print("Refit models to training data")
+    single_tree.fit(X_train, y_train)
+    random_forest.fit(X_train, y_train)
+    bagging.fit(X_train, y_train)
+    boosting.fit(X_train, y_train)
 
-    print("")
+    print("Predictions on test dataset")
+    st_preds = single_tree.predict(X_test)
+    rf_preds = random_forest.predict(X_test)
+    bg_preds = bagging.predict(X_test)
+    bst_preds = boosting.predict(X_test)
+
+    # Misclassification rate = 1 - accuracy
+    accs = [accuracy_score(y_test, st_preds), accuracy_score(y_test, rf_preds), accuracy_score(y_test, bg_preds), accuracy_score(y_test, bst_preds)]
+    miss = 1 - accs
+
+    print(
+        "Misclassification report:\n\tSingle Tree: {}\n\tRandom Forest: {}\n\tBagging Classifier: {}\n\tGradient Boosting Classifier: {}".format(miss[0], miss[1], miss[2], miss[3])
+    )
