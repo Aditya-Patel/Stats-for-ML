@@ -8,8 +8,8 @@ Summary: Implement Single Tree, Bagging, Random Forest, and Boosting classifiers
 import numpy as np
 import pandas as pd
 import os
-import sys
-import random
+
+from numba import jit
 from sklearn.model_selection import GridSearchCV
 from sklearn.ensemble import RandomForestClassifier, BaggingClassifier, GradientBoostingClassifier
 from sklearn.tree import DecisionTreeClassifier
@@ -60,7 +60,6 @@ def CreateDataset(dir):
     ydf = df.iloc[:, 0]
     return Xdf, ydf
 
-
 def GetBestParams(model, params, trainset_X, trainset_y):
     print("Searching parameter grid for {}".format(model))
     grid_search = GridSearchCV(
@@ -102,6 +101,11 @@ if __name__ == '__main__':
     for par_set in best_params:
         print(par_set)
 
+    # {'criterion': 'log_loss', 'max_depth': 100, 'max_features': 'sqrt', 'splitter': 'best'}
+    # {'criterion': 'gini', 'max_depth': 100, 'max_features': 'sqrt', 'min_samples_leaf': 1, 'min_samples_split': 2, 'n_estimators': 250}
+    # {'bootstrap': False, 'bootstrap_features': False, 'max_features': 100, 'max_samples': 5, 'n_estimators': 500}
+    # {'learning_rate': 0.2, 'loss': 'exponential', 'max_features': 'sqrt', 'min_samples_leaf': 4, 'min_samples_split': 2, 'n_estimators': 500, 'subsample': 1}
+
     print("Retraining models with best parameters")
     single_tree = DecisionTreeClassifier(**best_params[0])
     random_forest = RandomForestClassifier(**best_params[1])
@@ -122,7 +126,10 @@ if __name__ == '__main__':
 
     # Misclassification rate = 1 - accuracy
     accs = [accuracy_score(y_test, st_preds), accuracy_score(y_test, rf_preds), accuracy_score(y_test, bg_preds), accuracy_score(y_test, bst_preds)]
-    miss = 1 - accs
+    
+    miss = []
+    for score in accs:
+        miss.append(1-score)
 
     print(
         "Misclassification report:\n\tSingle Tree: {}\n\tRandom Forest: {}\n\tBagging Classifier: {}\n\tGradient Boosting Classifier: {}".format(miss[0], miss[1], miss[2], miss[3])

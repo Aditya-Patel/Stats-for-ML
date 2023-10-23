@@ -35,12 +35,13 @@ class GaussianNaiveBayes:
         self.priors = testset.groupby(class_col).apply(lambda x: len(x)/testset.shape[0]).to_numpy()
 
     def calculateEpsilon(self, var_list, smoothing_factor):
+        # Calculate smoothing parameter to ensure non-zero variances
         epsilon = (np.amax(var_list) * smoothing_factor)
         smoothed_var = var_list + epsilon
         return smoothed_var, epsilon
 
     def calculateMeanAndVar(self, testset, class_col, smoothing_factor=10**-9):
-        # Calculate columnar means and variances for both classes, and increment variances by a factor to ensure non-zero variances
+        # Calculate columnar means and variances for both classes
         self.mu = testset.groupby(class_col).mean().to_numpy()
         vars = testset.groupby(class_col).var(ddof=0).to_numpy()
         self.sig2, self.epsilon = self.calculateEpsilon(vars, smoothing_factor)
