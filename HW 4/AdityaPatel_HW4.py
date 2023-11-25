@@ -8,26 +8,33 @@ import numpy as np
 import os
 
 from MNISTImplementation import MNISTDriver
-from GANImplementation import GAN_Driver
+import GANImplementation as GAN
 
-num_samples = 1600
-num_comps = 8
-std_dev = 0.02
-latent_space = 100
-epochs = 3000
+MNIST_TRAIN_DIR = os.getcwd() + '/mnist_train.csv'
+MNIST_TEST_DIR = os.getcwd() + '/mnist_test.csv'
 
-def CreateMNISTDataset(dir):
-    df = pd.read_csv(dir)
-    Xdf = df.iloc[:, 1:].to_numpy()
-    ydf = df.iloc[:, 0].to_numpy()
-    return Xdf, ydf
+SAMPLE_CT = 1600
+COMPONENT_CT = 8
+STD_DEV = 0.02
+LEARNING_RATE = 0.0001
+EPOCH_CT = 5000
+BATCH_SZ = 8
+INPUT_SZ = 2
+
+
+def ImportMNISTDataFromDirectory(train_dir, test_dir):
+    mnist_test = pd.read_csv(test_dir)
+    mnist_train = pd.read_csv(train_dir)
+
+    mnist = pd.concat([mnist_train, mnist_test])
+    mnist.columns = mnist_train.columns
+
+    X_df = mnist.drop(['label'], axis=1)
+    y_df = mnist.label
+    return X_df, y_df
 
 if __name__ == '__main__':
-    # train_cwd = os.getcwd() + '/mnist_train.csv'
-    # test_cwd = os.getcwd() + '/mnist_test.csv'
+    test, train = ImportMNISTDataFromDirectory(MNIST_TRAIN_DIR, MNIST_TEST_DIR)
 
-    # X_train, y_train = CreateMNISTDataset(train_cwd)
-    # X_test, y_test = CreateMNISTDataset(test_cwd)
-
-    # MNISTDriver(X_train, y_train, X_test, y_test, out_features=10, hidden_layers=5, neurons=10)
-    GAN_Driver(num_samples=num_samples, num_comps=num_comps, std_dev=std_dev, latent_space=latent_space, epochs=epochs)
+    MNISTDriver(test, train)
+    GAN.driver(COMPONENT_CT, SAMPLE_CT, STD_DEV, INPUT_SZ, LEARNING_RATE, BATCH_SZ, EPOCH_CT)

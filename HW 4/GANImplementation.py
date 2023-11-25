@@ -6,94 +6,172 @@ Stat 598 - Statistical Machine Learning
 
 import numpy as np
 import matplotlib.pyplot as plt
-import tensorflow as tf
-from tensorflow.python.keras import layers
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import torch.utils.data.dataloader
+from torch.autograd.variable import Variable
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-def build_generator(latent_space):
-   model = tf.keras.Sequential([
-      layers.Dense(128, input_dim=latent_space, activation='relu'),
-      layers.Dense(2, activation='tanh')
-   ])
-   return model
-   
-def build_discriminator(input_dim):
-  model = tf.keras.Sequential([
-    layers.Dense(128, input_dim=input_dim, activation='relu'),
-    layers.Dense(1, activation='sigmoid')
-  ])
-  return model
+torch.manual_seed(42)
 
-def build_GAN(generator, discriminator):
-  discriminator.trainable = False
-  model = tf.keras.Sequential([
-    generator,
-    discriminator  
-  ])
-  return model
+# Bivariate Normal Distributions
+def generate_gmm_samples(num_samples, means, std_dev):
+  num_comps = len(means)
+  weights = np.ones(num_comps) / num_comps
+  samples = np.zeros((num_samples, 2))
 
-def GAN_Generator(num_samples, gmm_samples, latent_space, opt='adam', bts=64, epoch_ct=300):
-   # Define models
-  generator = build_generator(latent_space)
-  discriminator = build_discriminator(2)
-  gan = build_GAN(generator, discriminator)
+  for i in range(num_samples):
+    comp_idx = np.random.choice(num_comps, p=weights)
+    mean = means[comp_idx]
+    samples[i] = np.random.normal(loc=mean, scale=std_dev)
+  
+  return samples
 
-   # Compile models
-  discriminator.compile(loss='binary_crossentropy', optimizer=opt, metrics=['accuracy'])
-  gan.compile(loss='binary_crossentropy', optimizer=opt)
+# GAN Architecture
+class Generator(nn.Module):
+  def __init__(self, input_size, output_size):
+    super().__init__()
+    self.model = nn.Sequential(
+      nn.Linear(input_size, 256),
+      nn.ReLU(),
+      nn.Linear(256, 512),
+      nn.ReLU(),
+      nn.Linear(512, output_size)
+    )
+  
+  def forward(self, x):
+    return self.model(x)
 
+class Discriminator(nn.Module):
+  def __init__(self, input_size):
+    super().__init__()
+    self.model = nn.Sequential(
+      nn.Linear(input_size, 512),
+      nn.LeakyReLU(0.2),
+      nn.Linear(512, 256),
+      nn.LeakyReLU(0.2),
+      nn.Linear(256, 1),
+      nn.Sigmoid()
+    )
 
-   # Training
+  def forward(self, x):
+    return self.model(x)
+
+# Function to get GAN outputs from input  
+def GAN_generator(gmm_samples, input_size = 100, output_size = 2, num_samples = 1600, bts=64, epoch_ct=10000, lr=0.001):
+  # Generate Training data
+  train_data = torch.zeros((num_samples, 2))
+  train_data[:, 0] = torch.Tensor(gmm_samples[:, 0])
+  train_data[:, 1] = torch.Tensor(gmm_samples[:, 1])
+  train_labels = torch.zeros((num_samples))
+  train_set = [
+     (train_data[i], train_labels[i]) for i in range(num_samples)
+  ]
+
+  train_loader = torch.utils.data.DataLoader(train_set, batch_size=bts, shuffle=True)
+  
+  # Initiatlization of components
+  genr = Generator(2, output_size)
+  disc = Discriminator(output_size)
+  criterion = nn.BCELoss()
+  optim_G = optim.Adam(genr.parameters(), lr=lr)
+  optim_D = optim.Adam(disc.parameters(), lr=lr)
+
+  # Training loop
   for epoch in range(epoch_ct):
-    noise = np.random.normal(0, 1, size=(bts, latent_space))
-    gen_samples = generator.predict(noise)
+    for n, (real_samples, _) in enumerate(train_loader):
+        # Train Discriminator
+        real_sample_labels = torch.mul(torch.ones((bts, 1)), 1)
+        latent_space_samples = torch.randn((bts, 2))
+       
+        genned_samples = genr(latent_space_samples)
+        genned_sample_labels = torch.zeros((bts, 1))
 
-    idx = np.random.randint(0, gmm_samples.shape[0], bts)
-    real_samples = gmm_samples[idx]
+        all_samples = torch.cat((real_samples, genned_samples))
+        all_sample_labels = torch.cat((real_sample_labels, genned_sample_labels))
 
-    # labels for generated and real data
-    labels_r = np.ones((bts, 1))
-    labels_f = np.zeros((bts, 1))
+        disc.zero_grad()
+        disc_out = disc(all_samples)
+        loss_disc = criterion(disc_out, all_sample_labels)
+        loss_disc.backward()
+        optim_D.step()
 
-    # Train Discriminator
-    d_loss_r = discriminator.train_on_batch(real_samples, labels_r)
-    d_loss_f = discriminator.train_on_batch(gen_samples, labels_f)
-    d_loss = 0.5 * (np.add(d_loss_r, d_loss_f))
+        # Train Generator
+        latent_space_samples = torch.randn((bts, 2))
 
-    # Train Generator
-    noise = np.random.normal(0, 1, size=(bts, latent_space))
-    labels_gan = np.ones((bts, 1))
-    g_loss = gan.train_on_batch(noise, labels_gan)
+        genr.zero_grad()
+        genned_samples = genr(latent_space_samples)
+        disc_gen_out = disc(genned_samples)
+        loss_gen = criterion(disc_gen_out, real_sample_labels)
+        loss_gen.backward()
+        optim_G.step()
 
-    # Print Progress
+    # Print loss
     if epoch % 100 == 0:
-      print(f'Epoch [{epoch}/{epoch_ct}]: Discriminator Loss: {d_loss[0]:.4f} | Generator Loss: {g_loss:.4f}')
+        print(f"Epoch [{epoch}/{epoch_ct}]: D Loss: {loss_disc:.4f} | G Loss: {loss_gen:.4f}")
 
-  # Generate samples
-  gan_samples = generator.predict(np.random.normal(0, 1, size=(num_samples, latent_space)))
-  return gan_samples
+  test = Variable(torch.randn(num_samples, input_size))
+  genr_samples = genr(test)
   
+  return genr_samples.detach().numpy()
 
-def BivariateNormSamples(num_samples, num_components, means, var):
-    covars = np.array([[[var, 0],[0, var]]] * num_components)
-    
-    biv_norm_samples = np.concatenate([
-            np.random.multivariate_normal(means[k], covars[k], size=int(num_samples/num_components)) for k in range(num_components)
-    ])
-    
-    return biv_norm_samples
+# MMD function from provided reference
+def MMD(x, y, kernel):
+    """Emprical maximum mean discrepancy. The lower the result
+       the more evidence that distributions are the same.
 
-def GAN_Driver(num_samples, num_comps, std_dev, latent_space, epochs):
-  # Define GMM parameters
-  variance = std_dev ** 2
-  means = np.array([(2 * np.cos((2 * np.pi * k)/num_comps), 2 * np.sin((2 * np.pi * k)/num_comps)) for k in range(num_comps)])
+    Args:
+        x: first sample, distribution P
+        y: second sample, distribution Q
+        kernel: kernel type such as "multiscale" or "rbf"
+    """
+    xx, yy, zz = torch.mm(x, x.t()), torch.mm(y, y.t()), torch.mm(x, y.t())
+    rx = (xx.diag().unsqueeze(0).expand_as(xx))
+    ry = (yy.diag().unsqueeze(0).expand_as(yy))
+    
+    dxx = rx.t() + rx - 2. * xx # Used for A in (1)
+    dyy = ry.t() + ry - 2. * yy # Used for B in (1)
+    dxy = rx.t() + ry - 2. * zz # Used for C in (1)
+    
+    XX, YY, XY = (torch.zeros(xx.shape).to(device),
+                  torch.zeros(xx.shape).to(device),
+                  torch.zeros(xx.shape).to(device))
+    
+    if kernel == "multiscale":
+        bandwidth_range = [0.2, 0.5, 0.9, 1.3]
+        for a in bandwidth_range:
+            XX += a**2 * (a**2 + dxx)**-1
+            YY += a**2 * (a**2 + dyy)**-1
+            XY += a**2 * (a**2 + dxy)**-1
+            
+    if kernel == "rbf":  
+        bandwidth_range = [10, 15, 20, 50]
+        for a in bandwidth_range:
+            XX += torch.exp(-0.5*dxx/a)
+            YY += torch.exp(-0.5*dyy/a)
+            XY += torch.exp(-0.5*dxy/a)
+      
+    return torch.mean(XX + YY - 2. * XY)
+
+def driver(num_components=8, samples=1600, stdev=0.02, input_size=100, lr=0.0002, bts=64, epoch_ct=10000):
   
-  # Obtain samples from Bivariate Normal distribution
-  biv_norm_samples = BivariateNormSamples(num_samples, num_comps, means, variance)
-  gan_samples = GAN_Generator(num_samples, biv_norm_samples, latent_space, opt='adam', bts=64, epoch_ct=epochs)
+  gmm_means = np.array([(2 * np.cos(2 * np.pi * k / num_components), 2 * np.sin(2 * np.pi * k / num_components)) for k in range(num_components)])
 
-  # Plot results
+  gmm_samples = generate_gmm_samples(samples, gmm_means, stdev)
+  gan_samples = GAN_generator(gmm_samples, input_size, num_samples=samples, bts=bts, epoch_ct=epoch_ct, lr=lr)
+
+  # Create tensors and run MMD
+  gan_tensor = torch.from_numpy(gan_samples)
+  biv_tensor = torch.from_numpy(gmm_samples).to(dtype=torch.float32)
+  mmd_score = MMD(gan_tensor, biv_tensor, kernel='multiscale')
+  print(f"The MMD score was identified as {mmd_score:.4f}")
+
+  # Plot the results
   plt.scatter(gan_samples[:, 0], gan_samples[:, 1], label='GAN Samples', alpha=0.5)
-  plt.scatter(biv_norm_samples[:, 0], biv_norm_samples[:, 1], label='Bivariate Normal Samples', alpha=0.5)
-  plt.title('Samples from GAN and Bivarariate Normals')
+  plt.scatter(gmm_samples[:, 0], gmm_samples[:, 1], label='Mixture Samples', alpha=0.5)
+  plt.title(f"Samples from GAN and Mixture of 8 Gaussians. \n MMD Score = {mmd_score:.4f}")
   plt.legend()
   plt.show()
+
+  
