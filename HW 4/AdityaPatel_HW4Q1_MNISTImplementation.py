@@ -13,11 +13,14 @@ import tensorflow as tf
 from tensorflow import keras
 from sklearn.model_selection import train_test_split
 
+
 EPOCH_COUNT = 50
 BATCH_SIZE = 86
 
 MNIST_TRAIN_DIR = os.getcwd() + '/mnist_train.csv'
 MNIST_TEST_DIR = os.getcwd() + '/mnist_test.csv'
+
+tf.random.set_seed(42)
 
 def ImportMNISTDataFromDirectory(train_dir, test_dir):
     mnist_test = pd.read_csv(test_dir)
@@ -73,17 +76,18 @@ if __name__ == '__main__':
 
     model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
     lr_reducer = keras.callbacks.ReduceLROnPlateau(monitor='loss', factor=0.1, patience=2, min_lr=0.0000001)    
-    hist = model.fit(train, validation_data = vald, epochs = EPOCH_COUNT, callbacks=[lr_reducer], shuffle=True,)
+    training_results = model.fit(train, validation_data = vald, epochs = EPOCH_COUNT, callbacks=[lr_reducer], shuffle=True,)
 
-    # Evaluate against test data
-    future = model.evaluate(test, verbose=2)
+    # Evaluate against test data. Output of 'evaluate' function returns [loss, accuracy]
+    prediction_results = model.evaluate(test, verbose=2)
+    test_err_pct = 100 * (1 - prediction_results[1])
 
     # Plot error
-    x = np.array(hist.epoch)
-    y = np.array(hist.history['accuracy'])
-    y = np.multiply(np.subtract(1, y), 100)
-    plt.plot(x, y)
-    plt.title(f'Test Error in Percent vs. Epoch\nModel Prediction Error = {(1-future[1])*100:.2f}%')
+    train_epoch = np.array(training_results.epoch)
+    train_acc = np.array(training_results.history['accuracy'])
+    train_err = np.multiply(np.subtract(1, train_acc), 100)
+    plt.plot(train_epoch, train_err)
+    plt.title(f'Validation Error in Percent vs. Epoch\nModel Prediction Error = {test_err_pct:.2f}%')
     plt.xlabel('Epoch')
     plt.ylabel('Test Error (%)')
     plt.show()
